@@ -1,0 +1,10 @@
+python-whois
+datetime
+logging
+python-nmap
+requests
+beautifulsoup4
+python-Wappalyzer
+builtwith
+colorama
+lxml
