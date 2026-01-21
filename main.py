@@ -198,7 +198,7 @@ def main():
     parser.add_argument("-v", "--verbose", action="count", default=0)
 
     args = parser.parse_args()
-    
+
     if not args.target:
         parser.print_help()
         sys.exit(1)
@@ -229,7 +229,8 @@ def main():
         detector = TechDetector(args.target, verbose=args.verbose)
         detector.run_detection()
         detector.print_results()
-        detector.generate_report(args.output)
+        if args.report:
+            detector.generate_report(args.output)
 
     if args.report:
         generate_report(args.target)
