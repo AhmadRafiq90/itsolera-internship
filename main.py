@@ -198,9 +198,11 @@ def main():
     parser.add_argument("-v", "--verbose", action="count", default=0)
 
     args = parser.parse_args()
+    
     if not args.target:
         parser.print_help()
         sys.exit(1)
+
     setup_logging(args.verbose)
 
     logging.info("Recon started")
