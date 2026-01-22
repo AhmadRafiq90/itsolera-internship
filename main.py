@@ -7,6 +7,7 @@ import socket
 import nmap
 import sys
 import json
+import dns.resolver
 from tech_detect import TechDetector
 
 try:
@@ -33,109 +34,214 @@ def setup_logging(verbosity: int):
 
 
 # -------------------------
-# WHOIS Lookup (REAL)
+# WHOIS Lookup
 # -------------------------
-def whois_lookup(domain: str):
+def whois_lookup(domain: str, log_file: str | None = None):
     """
-    Perform a WHOIS lookup for the given domain.
+    Perform a WHOIS lookup.
+    Optionally write WHOIS output to a log file.
     """
     logging.info(f"Starting WHOIS lookup for {domain}")
 
-    if whois is None:
-        logging.error("python-whois module not installed")
-        return
-
     try:
-        result = whois.whois(domain)
+        import whois as pywhois
+        if not hasattr(pywhois, "whois"):
+            raise ImportError("Incorrect whois module installed")
 
+        w = pywhois.whois(domain)
+
+        whois_data = {
+            "domain": w.domain_name,
+            "registrar": w.registrar,
+            "creation_date": w.creation_date,
+            "expiration_date": w.expiration_date,
+            "name_servers": w.name_servers,
+        }
+
+        logging.debug(f"WHOIS parsed data: {whois_data}")
+
+        # Print to stdout
         print("\n=== WHOIS INFORMATION ===")
-        print(f"Domain Name   : {result.domain_name}")
-        print(f"Registrar     : {result.registrar}")
-        print(f"Creation Date : {result.creation_date}")
-        print(f"Expiry Date   : {result.expiration_date}")
-        print(f"Name Servers  : {result.name_servers}")
+        for k, v in whois_data.items():
+            print(f"{k.capitalize():15}: {v}")
         print("=========================\n")
 
-        logging.debug(f"Raw WHOIS data: {result}")
+        # Optional file logging
+        if log_file:
+            logging.info(f"Writing WHOIS data to {log_file}")
+            with open(log_file, "a") as f:
+                f.write(f"\n[{datetime.datetime.utcnow().isoformat()} UTC]\n")
+                for k, v in whois_data.items():
+                    f.write(f"{k}: {v}\n")
+                f.write("-" * 40 + "\n")
+
+        return whois_data
+
+    except ImportError:
+        logging.error("python-whois not installed. Run: pip install python-whois")
+        return {"error": "missing python-whois"}
 
     except Exception as e:
-        logging.error(f"WHOIS lookup failed: {e}")
+        logging.error(f"WHOIS lookup failed: {e}", exc_info=True)
+        return {"error": str(e)}
 
 
-# -------------------------
-# Dummy Recon Functions
-# -------------------------
-def dns_enum(domain: str):
-    logging.info(f"[DUMMY] DNS enumeration for {domain}")
-    pass
+def dns_enumeration(domain: str, log_file: str | None = None):
+    """
+    Perform DNS enumeration (A, MX, TXT, NS).
+    Optionally write results to a log file.
+    """
+    logging.info(f"Starting DNS enumeration for {domain}")
+
+    resolver = dns.resolver.Resolver()
+    record_types = ["A", "MX", "TXT", "NS"]
+
+    results = {
+        "domain": domain,
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "records": {}
+    }
+
+    for rtype in record_types:
+        logging.debug(f"Querying {rtype} records for {domain}")
+        results["records"][rtype] = []
+
+        try:
+            answers = resolver.resolve(domain, rtype)
+            for rdata in answers:
+                value = str(rdata)
+                results["records"][rtype].append(value)
+                logging.debug(f"{rtype} record found: {value}")
+
+        except dns.resolver.NoAnswer:
+            logging.info(f"No {rtype} records found")
+        except dns.resolver.NXDOMAIN:
+            logging.error("Domain does not exist")
+            return {"error": "NXDOMAIN"}
+        except dns.exception.Timeout:
+            logging.warning(f"DNS query timeout for {rtype}")
+        except Exception as e:
+            logging.error(f"Failed to resolve {rtype}: {e}", exc_info=True)
+
+    # Console output
+    print("\n=== DNS ENUMERATION ===")
+    for rtype, values in results["records"].items():
+        print(f"{rtype} Records:")
+        if values:
+            for v in values:
+                print(f"  - {v}")
+        else:
+            print("  - None")
+    print("======================\n")
+
+    # Optional file logging
+    if log_file:
+        logging.info(f"Writing DNS results to {log_file}")
+        with open(log_file, "a") as f:
+            f.write(f"\n[{results['timestamp']} UTC]\n")
+            f.write(f"Domain: {domain}\n")
+            for rtype, values in results["records"].items():
+                f.write(f"{rtype} Records:\n")
+                if values:
+                    for v in values:
+                        f.write(f"  - {v}\n")
+                else:
+                    f.write("  - None\n")
+            f.write("-" * 40 + "\n")
+
+    logging.info("DNS enumeration completed")
+    return results
 
 
 def subdomain_enum(domain: str):
     logging.info(f"[DUMMY] Subdomain enumeration for {domain}")
     pass
 
-
-def port_scan(target_input: str,ports="1-1000", scan_args="-sT -Pn", grab_banners=False):
-    logging.info(f"[DUMMY] Port scanning for {target_input}")
+def port_scan(
+    target_input: str,
+    ports="1-1000",
+    scan_args="-sT -Pn",
+    grab_banners=False,
+    log_file: str | None = None
+):
     """
     Performs a port scan using Nmap.
     Returns structured data including resolved IP, open ports, and service names.
     """
+    logging.info(f"Starting port scan on {target_input}")
+    logging.debug(
+        f"Scan config → ports={ports}, args='{scan_args}', grab_banners={grab_banners}"
+    )
+
     nm = nmap.PortScanner()
-    
-    start_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    print(f"[*] Starting Scan at {start_time}")
-    print(f"[*] Target: {target_input} | Ports: {ports} | Args: {scan_args}")
-    
+    timestamp = datetime.datetime.utcnow().isoformat()
+
     try:
         nm.scan(hosts=target_input, ports=ports, arguments=scan_args)
         hosts_list = nm.all_hosts()
 
+        logging.debug(f"Nmap returned hosts: {hosts_list}")
+
         if not hosts_list:
-             return {
-                 "target": target_input, 
-                 "timestamp": start_time,
-                 "status": "down/no-response"
-             }
+            logging.warning("No hosts responded to scan")
+            result = {
+                "target": target_input,
+                "timestamp": timestamp,
+                "status": "down/no-response"
+            }
+            _write_portscan_log(result, log_file)
+            return result
 
         actual_ip = hosts_list[0]
-        
+        logging.info(f"Target is up: {actual_ip}")
+
         scan_results = {
             "target_input": target_input,
             "resolved_ip": actual_ip,
-            "timestamp": start_time,
+            "timestamp": timestamp,
             "status": "up",
             "protocols": {}
         }
 
         for proto in nm[actual_ip].all_protocols():
+            logging.debug(f"Processing protocol: {proto}")
             scan_results["protocols"][proto] = []
-            
-            lport = nm[actual_ip][proto].keys()
-            for port in sorted(lport):
-                state = nm[actual_ip][proto][port]['state']
-                service = nm[actual_ip][proto][port]['name']
-                
+
+            for port in sorted(nm[actual_ip][proto].keys()):
+                pdata = nm[actual_ip][proto][port]
+                state = pdata.get("state")
+                service = pdata.get("name")
+
+                logging.debug(
+                    f"{actual_ip}:{port}/{proto} → state={state}, service={service}"
+                )
+
                 port_info = {
                     "port": port,
                     "state": state,
                     "service": service
                 }
 
-                # Grab banner if flag is enabled and port is open
                 if grab_banners and state == "open":
+                    logging.debug(f"Attempting banner grab on {actual_ip}:{port}")
                     banner = grab_banner(actual_ip, port)
                     if banner:
                         port_info["banner"] = banner
 
                 scan_results["protocols"][proto].append(port_info)
-        
+
+        logging.info("Port scan completed successfully")
+
+        _write_portscan_log(scan_results, log_file)
         return scan_results
 
     except Exception as e:
-        return {"error": str(e)}
-    pass
+        logging.error(f"Port scan failed: {e}", exc_info=True)
+        result = {"error": str(e), "timestamp": timestamp}
+        _write_portscan_log(result, log_file)
+        return result
+
+
 
 
 def grab_banner(host, port, timeout=2):
@@ -211,22 +317,37 @@ def main():
     resolve_ip(args.target)
 
     if args.whois:
-        whois_lookup(args.target)
+        if args.report:
+            whois_lookup(args.target, log_file="recon.log")
+        else:
+            whois_lookup(args.target)
 
     if args.dns:
-        dns_enum(args.target)
+        if args.report:
+            dns_enumeration(args.target, log_file="recon.log")
+        else:
+            dns_enumeration(args.target)
 
     if args.subdomains:
         subdomain_enum(args.target)
 
     if args.ports:
         if args.banner:
-            port_scan(args.target, grab_banners=True)
+            if args.report:
+                port_scan(args.target, grab_banners=True, log_file="recon.log")
+            else:
+                port_scan(args.target, grab_banners=True)
         else:
-            port_scan(args.target)
+            if args.report:
+                port_scan(args.target, log_file="recon.log")
+            else:
+                port_scan(args.target)
 
     if args.tech:
-        detector = TechDetector(args.target, verbose=args.verbose)
+        if args.verbose == 1:
+            detector = TechDetector(args.target, verbose=False)
+        else:
+            detector = TechDetector(args.target, verbose=True)
         detector.run_detection()
         detector.print_results()
         if args.report:
