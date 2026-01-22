@@ -241,6 +241,42 @@ def port_scan(
         _write_portscan_log(result, log_file)
         return result
 
+def _write_portscan_log(data: dict, log_file: str | None):
+    if not log_file:
+        return
+
+    logging.info(f"Writing port scan results to {log_file}")
+
+    with open(log_file, "a") as f:
+        f.write(f"\n[{data.get('timestamp')} UTC]\n")
+
+        if data.get("status") == "down/no-response":
+            f.write(f"Target: {data.get('target')}\n")
+            f.write("Status: No response\n")
+            f.write("-" * 40 + "\n")
+            return
+
+        if "error" in data:
+            f.write("Port Scan Error:\n")
+            f.write(f"{data['error']}\n")
+            f.write("-" * 40 + "\n")
+            return
+
+        f.write(f"Target Input : {data['target_input']}\n")
+        f.write(f"Resolved IP  : {data['resolved_ip']}\n")
+        f.write(f"Status       : {data['status']}\n")
+
+        for proto, ports in data.get("protocols", {}).items():
+            f.write(f"\n{proto.upper()} Ports:\n")
+            for p in ports:
+                line = f"  {p['port']}/"
+                line += proto
+                line += f" [{p['state']}] {p['service']}"
+                if "banner" in p:
+                    line += f" | Banner: {p['banner']}"
+                f.write(line + "\n")
+
+        f.write("-" * 40 + "\n")
 
 
 
