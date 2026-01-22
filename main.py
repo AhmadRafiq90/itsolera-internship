@@ -157,27 +157,92 @@ def subdomain_enum(domain: str):
     logging.info(f"[DUMMY] Subdomain enumeration for {domain}")
     pass
 
+
+def validate_port_range(port_string: str) -> str:
+    """
+    Validate and normalize port range input.
+    Accepts formats like:
+      - "80" (single port)
+      - "80,443,8080" (comma-separated)
+      - "1-1000" (range)
+      - "22,80,443,1000-2000" (mixed)
+    Returns the validated port string or raises ValueError.
+    """
+    if not port_string:
+        raise ValueError("Port string cannot be empty")
+    
+    # Remove whitespace
+    port_string = port_string.replace(" ", "")
+    
+    # Split by comma to handle mixed formats
+    parts = port_string.split(",")
+    
+    for part in parts:
+        if "-" in part:
+            # Range format: start-end
+            range_parts = part.split("-")
+            if len(range_parts) != 2:
+                raise ValueError(f"Invalid port range format: {part}")
+            
+            try:
+                start = int(range_parts[0])
+                end = int(range_parts[1])
+            except ValueError:
+                raise ValueError(f"Invalid port numbers in range: {part}")
+            
+            if start < 1 or end > 65535:
+                raise ValueError(f"Port numbers must be between 1-65535: {part}")
+            if start > end:
+                raise ValueError(f"Start port must be <= end port: {part}")
+        else:
+            # Single port
+            try:
+                port = int(part)
+            except ValueError:
+                raise ValueError(f"Invalid port number: {part}")
+            
+            if port < 1 or port > 65535:
+                raise ValueError(f"Port number must be between 1-65535: {part}")
+    
+    return port_string
+
+
 def port_scan(
     target_input: str,
-    ports="1-1000",
-    scan_args="-sT -Pn",
-    grab_banners=False,
+    ports: str = "1-1000",
+    scan_args: str = "-sT -Pn",
+    grab_banners: bool = False,
     log_file: str | None = None
 ):
     """
     Performs a port scan using Nmap.
     Returns structured data including resolved IP, open ports, and service names.
+    
+    Args:
+        target_input: Target domain or IP address
+        ports: Port specification (e.g., "80", "1-1000", "22,80,443", "22,80,100-200")
+        scan_args: Nmap scan arguments
+        grab_banners: Whether to attempt banner grabbing on open ports
+        log_file: Optional file to log results
     """
     logging.info(f"Starting port scan on {target_input}")
     logging.debug(
         f"Scan config → ports={ports}, args='{scan_args}', grab_banners={grab_banners}"
     )
 
+    # Validate port range
+    try:
+        validated_ports = validate_port_range(ports)
+        logging.debug(f"Validated port range: {validated_ports}")
+    except ValueError as e:
+        logging.error(f"Invalid port specification: {e}")
+        return {"error": str(e), "timestamp": datetime.datetime.utcnow().isoformat()}
+
     nm = nmap.PortScanner()
     timestamp = datetime.datetime.utcnow().isoformat()
 
     try:
-        nm.scan(hosts=target_input, ports=ports, arguments=scan_args)
+        nm.scan(hosts=target_input, ports=validated_ports, arguments=scan_args)
         hosts_list = nm.all_hosts()
 
         logging.debug(f"Nmap returned hosts: {hosts_list}")
@@ -187,6 +252,7 @@ def port_scan(
             result = {
                 "target": target_input,
                 "timestamp": timestamp,
+                "ports_scanned": validated_ports,
                 "status": "down/no-response"
             }
             _write_portscan_log(result, log_file)
@@ -199,6 +265,7 @@ def port_scan(
             "target_input": target_input,
             "resolved_ip": actual_ip,
             "timestamp": timestamp,
+            "ports_scanned": validated_ports,
             "status": "up",
             "protocols": {}
         }
@@ -212,7 +279,7 @@ def port_scan(
                 state = pdata.get("state")
                 service = pdata.get("name")
 
-                logging.debug(
+                logging.info(
                     f"{actual_ip}:{port}/{proto} → state={state}, service={service}"
                 )
 
@@ -232,6 +299,9 @@ def port_scan(
 
         logging.info("Port scan completed successfully")
 
+        # Print summary to console
+        _print_portscan_summary(scan_results)
+        
         _write_portscan_log(scan_results, log_file)
         return scan_results
 
@@ -240,6 +310,27 @@ def port_scan(
         result = {"error": str(e), "timestamp": timestamp}
         _write_portscan_log(result, log_file)
         return result
+
+
+def _print_portscan_summary(data: dict):
+    """Print port scan results to console."""
+    print("\n=== PORT SCAN RESULTS ===")
+    print(f"Target: {data['target_input']} ({data['resolved_ip']})")
+    print(f"Ports Scanned: {data['ports_scanned']}")
+    print(f"Status: {data['status']}")
+    
+    for proto, ports in data.get("protocols", {}).items():
+        open_ports = [p for p in ports if p['state'] == 'open']
+        if open_ports:
+            print(f"\nOpen {proto.upper()} Ports:")
+            for p in open_ports:
+                line = f"  {p['port']}/{proto} - {p['service']}"
+                if "banner" in p:
+                    line += f" | Banner: {p['banner'][:50]}..."
+                print(line)
+    
+    print("=========================\n")
+
 
 def _write_portscan_log(data: dict, log_file: str | None):
     if not log_file:
@@ -252,6 +343,7 @@ def _write_portscan_log(data: dict, log_file: str | None):
 
         if data.get("status") == "down/no-response":
             f.write(f"Target: {data.get('target')}\n")
+            f.write(f"Ports Scanned: {data.get('ports_scanned', 'N/A')}\n")
             f.write("Status: No response\n")
             f.write("-" * 40 + "\n")
             return
@@ -262,9 +354,10 @@ def _write_portscan_log(data: dict, log_file: str | None):
             f.write("-" * 40 + "\n")
             return
 
-        f.write(f"Target Input : {data['target_input']}\n")
-        f.write(f"Resolved IP  : {data['resolved_ip']}\n")
-        f.write(f"Status       : {data['status']}\n")
+        f.write(f"Target Input  : {data['target_input']}\n")
+        f.write(f"Resolved IP   : {data['resolved_ip']}\n")
+        f.write(f"Ports Scanned : {data['ports_scanned']}\n")
+        f.write(f"Status        : {data['status']}\n")
 
         for proto, ports in data.get("protocols", {}).items():
             f.write(f"\n{proto.upper()} Ports:\n")
@@ -277,7 +370,6 @@ def _write_portscan_log(data: dict, log_file: str | None):
                 f.write(line + "\n")
 
         f.write("-" * 40 + "\n")
-
 
 
 def grab_banner(host, port, timeout=2):
@@ -326,18 +418,39 @@ def resolve_ip(target: str):
 # -------------------------
 def main():
     parser = argparse.ArgumentParser(
-        description="Modular Recon Tool (Intern Assignment)"
+        description="Modular Recon Tool (Intern Assignment)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Port specification examples:
+  --ports 80              Single port
+  --ports 1-1000          Port range
+  --ports 22,80,443       Comma-separated ports
+  --ports 22,80,100-200   Mixed format
+
+Examples:
+  %(prog)s example.com --ports 80,443 --banner
+  %(prog)s 192.168.1.1 --ports 1-65535
+  %(prog)s example.com --whois --dns --ports 1-1000 --report
+        """
     )
 
     parser.add_argument("target", help="Target domain or IP")
     parser.add_argument("--whois", action="store_true", help="Perform WHOIS lookup")
     parser.add_argument("--dns", action="store_true", help="Perform DNS enumeration")
     parser.add_argument("--subdomains", action="store_true", help="Enumerate subdomains")
-    parser.add_argument("--ports", action="store_true", help="Scan ports")
-    parser.add_argument("--banner", action="store_true", help="Grab service banners")
+    parser.add_argument(
+        "--ports",
+        nargs="?",
+        const="1-1000",
+        default=None,
+        metavar="PORTS",
+        help="Scan ports. Specify range (e.g., '1-1000', '22,80,443', '22,80,100-200'). Default: 1-1000"
+    )
+    parser.add_argument("--banner", action="store_true", help="Grab service banners (use with --ports)")
     parser.add_argument("--tech", action="store_true", help="Detect technologies")
     parser.add_argument("--report", action="store_true", help="Generate report")
-    parser.add_argument("-v", "--verbose", action="count", default=0)
+    parser.add_argument("--output", default="recon.log", help="Output file for report (default: recon.log)")
+    parser.add_argument("-v", "--verbose", action="count", default=1, help="Increase verbosity (-v, -vv)")
 
     args = parser.parse_args()
 
@@ -354,30 +467,27 @@ def main():
 
     if args.whois:
         if args.report:
-            whois_lookup(args.target, log_file="recon.log")
+            whois_lookup(args.target, log_file=args.output)
         else:
             whois_lookup(args.target)
 
     if args.dns:
         if args.report:
-            dns_enumeration(args.target, log_file="recon.log")
+            dns_enumeration(args.target, log_file=args.output)
         else:
             dns_enumeration(args.target)
 
     if args.subdomains:
         subdomain_enum(args.target)
 
-    if args.ports:
-        if args.banner:
-            if args.report:
-                port_scan(args.target, grab_banners=True, log_file="recon.log")
-            else:
-                port_scan(args.target, grab_banners=True)
-        else:
-            if args.report:
-                port_scan(args.target, log_file="recon.log")
-            else:
-                port_scan(args.target)
+    if args.ports is not None:
+        log_file = args.output if args.report else None
+        port_scan(
+            args.target,
+            ports=args.ports,
+            grab_banners=args.banner,
+            log_file=log_file
+        )
 
     if args.tech:
         if args.verbose == 1:
