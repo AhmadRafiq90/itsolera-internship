@@ -508,7 +508,8 @@ def check_subdomain_http(subdomain_info: Dict, timeout: int = 5) -> Dict:
         
     except requests.exceptions.RequestException:
         pass
-    
+    if subdomain_info["http_title"]:
+        subdomain_info["http_title"] = subdomain_info["http_title"].encode("utf-8", errors="replace").decode("utf-8")
     return subdomain_info
 
 
@@ -697,7 +698,7 @@ def _write_subdomain_log(results: Dict, log_file: str):
     """Write subdomain enumeration results to log file."""
     logging.info(f"Writing subdomain results to {log_file}")
     
-    with open(log_file, "a") as f:
+    with open(log_file, "a", encoding="utf-8") as f:
         f.write(f"\n{'=' * 60}\n")
         f.write(f"SUBDOMAIN ENUMERATION RESULTS\n")
         f.write(f"{'=' * 60}\n")
