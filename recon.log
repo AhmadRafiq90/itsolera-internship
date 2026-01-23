@@ -1,0 +1,74 @@
+
+[2026-01-23T22:24:01.114328 UTC]
+domain: GOOGLE.COM
+registrar: MarkMonitor, Inc.
+creation_date: [datetime.datetime(1997, 9, 15, 4, 0, tzinfo=tzoffset('UTC', 0)), datetime.datetime(1997, 9, 15, 7, 0, tzinfo=tzoffset('UTC', 0))]
+expiration_date: [datetime.datetime(2028, 9, 14, 4, 0, tzinfo=tzoffset('UTC', 0)), datetime.datetime(2028, 9, 13, 7, 0, tzinfo=tzoffset('UTC', 0))]
+name_servers: ['NS1.GOOGLE.COM', 'NS2.GOOGLE.COM', 'NS3.GOOGLE.COM', 'NS4.GOOGLE.COM']
+----------------------------------------
+
+[2026-01-23T22:24:01.117323 UTC]
+Domain: google.com
+A Records:
+  - 142.250.185.142
+MX Records:
+  - 10 smtp.google.com.
+TXT Records:
+  - "onetrust-domain-verification=6d685f1d41a94696ad7ef771f68993e0"
+  - "google-site-verification=TV9-DBe4R80X4v0M4U_bd_J9cpOJM0nikft0jAgjmsQ"
+  - "google-site-verification=wD8N7i1JTNTkezJ49swvWW48f8_9xveREV4oB-0Hf5o"
+  - "docusign=05958488-4752-4ef2-95eb-aa7ba8a3bd0e"
+  - "MS=E4A68B9AB2BB9670BCE15412F62916164C0B20BB"
+  - "apple-domain-verification=30afIBcvSuDV2PLX"
+  - "v=spf1 include:_spf.google.com ~all"
+NS Records:
+  - ns3.google.com.
+  - ns4.google.com.
+  - ns1.google.com.
+  - ns2.google.com.
+----------------------------------------
+
+============================================================
+SUBDOMAIN ENUMERATION RESULTS
+============================================================
+Target Domain : google.com
+Timestamp     : 2026-01-23T22:24:18.249864 UTC
+Sources Used  : crt.sh, hackertarget, alienvault, threatcrowd, bruteforce
+Total Found   : 227
+------------------------------------------------------------
+
+Subdomain: aarjav-b480g7k2ab9@checkout.google.com
+  IPs: N/A
+  Source: crt.sh
+
+Subdomain: accounts.flexpack.google.com
+  IPs: N/A
+  Source: crt.sh
+
+Subdomain: accounts.freezone.google.com
+  IPs: N/A
+  Source: crt.sh
+
+Subdomain: accounts.google.com
+  IPs: N/A
+  Source: crt.sh
+  HTTP Status: 200
+  HTTPS Status: 200
+  Title: Sign in - Google Accounts
+
+Subdomain: admin@google.com
+  IPs: N/A
+  Source: crt.sh
+  HTTP Status: 200
+  HTTPS Status: 200
+  Title: Google
+
+Subdomain: ads-compare.eem.corp.google.com
+  IPs: N/A
+  Source: crt.sh
+
+Subdomain: adwords.google.com
+  IPs: N/A
+  Source: crt.sh
+  HTTP Status: 200
+  HTTPS Status: 200
